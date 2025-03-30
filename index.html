@@ -13,6 +13,70 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@200..1000&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <style>
+        .share-link {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .share-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .copy-button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .copy-button:hover {
+            background-color: #45a049;
+        }
+
+        .cookie-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        .cookie-buttons {
+            margin-top: 10px;
+        }
+
+        .cookie-btn {
+            margin: 0 10px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .accept-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .decline-btn {
+            background-color: #f44336;
+            color: white;
+        }
+    </style>
 </head>
 
 <body>
@@ -29,50 +93,122 @@
             <p>Made with <span class="heart">❤</span> by <span class="gboy">GBOY</span></p>
         </footer>
     </div>
+
+    <!-- Cookie consent banner -->
+    <div id="cookieBanner" class="cookie-banner" style="display: none;">
+        <p>This site uses cookies to remember your Eid message. Without cookies, you'll need to save the URL to access
+            your message again.</p>
+        <div class="cookie-buttons">
+            <button class="cookie-btn accept-btn" onclick="acceptCookies()">Accept Cookies</button>
+        </div>
+    </div>
+
     <script>
-        // Function to check if we're in incognito mode (best-effort detection)
-        async function isIncognito() {
+        // Global variables
+        const viewedIds = new Set();
+        let cookiesAccepted = false;
+        let incognitoMode = false;
+
+        // Check if we're in incognito mode
+        async function detectIncognito() {
             try {
-                // Try to use local storage as a test
+                // Test localStorage
                 localStorage.setItem('test', 'test');
                 localStorage.removeItem('test');
 
-                // If that worked, check IndexedDB (often disabled in incognito)
-                const db = indexedDB.open('test');
-                await new Promise((resolve, reject) => {
-                    db.onerror = () => resolve(true); // Likely incognito
-                    db.onsuccess = () => resolve(false); // Likely normal mode
-                });
+                // Test more persistent storage options
+                try {
+                    const db = indexedDB.open('test');
+                    await new Promise((resolve, reject) => {
+                        db.onerror = () => {
+                            incognitoMode = true;
+                            resolve();
+                        };
+                        db.onsuccess = () => {
+                            incognitoMode = false;
+                            resolve();
+                        };
+                    });
+                } catch (e) {
+                    incognitoMode = true;
+                }
 
-                return false; // If we get here, probably not incognito
+                return incognitoMode;
             } catch (e) {
-                return true; // Storage exception - likely incognito
+                incognitoMode = true;
+                return true;
             }
         }
 
-        // Track already viewed IDs in memory for the current session
-        const viewedIds = new Set();
+        // Function to save the user ID with the most appropriate method
+        function saveUserId(userId) {
+            // Always try localStorage first
+            try {
+                localStorage.setItem('eidMessageId', userId);
 
-        // Check if user already retrieved their message
+                // Also try to set a cookie for more persistence
+                if (cookiesAccepted) {
+                    const expiryDate = new Date();
+                    expiryDate.setMonth(expiryDate.getMonth() + 1); // Cookie expires in 1 month
+                    document.cookie = `eidMessageId=${userId}; expires=${expiryDate.toUTCString()}; path=/; SameSite=Strict`;
+                }
+
+                return true;
+            } catch (e) {
+                console.log('Could not save to localStorage or cookies');
+                return false;
+            }
+        }
+
+        // Function to get the user ID from any available storage
+        function getUserId() {
+            // Try localStorage first
+            const localId = localStorage.getItem('eidMessageId');
+            if (localId) return localId;
+
+            // Try cookies next
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                cookie = cookie.trim();
+                if (cookie.startsWith('eidMessageId=')) {
+                    return cookie.substring('eidMessageId='.length);
+                }
+            }
+
+            // Try URL parameter as last resort
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('id');
+        }
+
+        // Check for previous searches on page load
         async function checkPreviousSearch() {
-            // First try local storage
-            const previousId = localStorage.getItem('eidMessageId');
-            if (previousId) {
+            // Detect incognito mode first
+            await detectIncognito();
+
+            // Show cookie banner if appropriate
+            if (!document.cookie.includes('cookieChoice') && !incognitoMode) {
+                document.getElementById('cookieBanner').style.display = 'block';
+            }
+
+            // Try to get userId from any storage method
+            const userId = getUserId();
+
+            if (userId) {
                 // User has already retrieved a message
-                viewedIds.add(previousId);
+                viewedIds.add(userId);
                 const searchSection = document.getElementById('search-section');
                 searchSection.style.display = 'none';
 
-                fetchStoredUserData(previousId);
-                return;
-            }
-
-            // If no local storage, check for URL parameter (fallback for incognito)
-            const urlParams = new URLSearchParams(window.location.search);
-            const idParam = urlParams.get('id');
-            if (idParam) {
-                document.getElementById('userId').value = idParam;
-                fetchUserData(true); // true means it's from URL param
+                // Fetch and display the message
+                fetchStoredUserData(userId);
+            } else {
+                // Check if there's an ID in the URL (direct access link)
+                const urlParams = new URLSearchParams(window.location.search);
+                const idParam = urlParams.get('id');
+                if (idParam) {
+                    document.getElementById('userId').value = idParam;
+                    fetchUserData(true); // true means it's from URL param
+                }
             }
         }
 
@@ -96,6 +232,11 @@
                             <p>${user.message}</p>
                         </div>
                     `;
+
+                    // Create a direct link for sharing or bookmarking
+                    if (incognitoMode) {
+                        createShareLink(userId);
+                    }
                 } else {
                     resultDiv.innerHTML = `
                         <div class="error-message">
@@ -112,7 +253,7 @@
             }
         }
 
-        // New user search
+        // Process a new search
         async function fetchUserData(fromUrlParam = false) {
             const userId = document.getElementById('userId').value.trim();
             const resultDiv = document.getElementById('result');
@@ -127,31 +268,25 @@
                 return;
             }
 
-            // Check if this ID has already been viewed in this session
+            // Check if this ID has already been viewed
             if (viewedIds.has(userId) && !fromUrlParam) {
-                // User is searching for an ID that's already been viewed
                 resultDiv.innerHTML = `
-                    <div class="error-message">
-                        <p>This ID has already been viewed. Each user can only view their own message once.</p>
+                    <div class="success-message">
+                        <p>You have already viewed this message.</p>
                     </div>
                 `;
+                fetchStoredUserData(userId);
                 return;
             }
 
-            // Check local storage for any previously viewed ID
-            const previousId = localStorage.getItem('eidMessageId');
-            if (previousId && !fromUrlParam) {
-                if (previousId === userId) {
-                    // User is searching for their own ID again
-                    fetchStoredUserData(previousId);
-                } else {
-                    // User is trying to search for a different ID
-                    resultDiv.innerHTML = `
-                        <div class="error-message">
-                            <p>You have already viewed your message. Each user can only view their own message once.</p>
-                        </div>
-                    `;
-                }
+            // Check if any other ID has been viewed in this session
+            const previousId = getUserId();
+            if (previousId && previousId !== userId && !fromUrlParam) {
+                resultDiv.innerHTML = `
+                    <div class="error-message">
+                        <p>You have already viewed a different message. Each user can only view their own message.</p>
+                    </div>
+                `;
                 return;
             }
 
@@ -168,30 +303,10 @@
                     // Add to memory for current session
                     viewedIds.add(userId);
 
-                    // Try to store in local storage (may fail in incognito)
-                    try {
-                        localStorage.setItem('eidMessageId', userId);
-                    } catch (e) {
-                        console.log('Could not save to localStorage, likely in incognito mode');
-                        // Create a shareable link with the ID in the URL
-                        const currentUrl = new URL(window.location.href);
-                        currentUrl.searchParams.set('id', userId);
+                    // Try to save the ID permanently
+                    const saved = saveUserId(userId);
 
-                        // Add a share option if in incognito
-                        if (await isIncognito()) {
-                            setTimeout(() => {
-                                const shareDiv = document.createElement('div');
-                                shareDiv.className = 'share-link';
-                                shareDiv.innerHTML = `
-                                    <p>It seems you're using incognito mode. Save this link to access your message later:</p>
-                                    <input type="text" value="${currentUrl.href}" readonly class="share-input">
-                                    <button onclick="copyShareLink()" class="copy-button">Copy Link</button>
-                                `;
-                                resultDiv.appendChild(shareDiv);
-                            }, 1000);
-                        }
-                    }
-
+                    // Display the message
                     resultDiv.innerHTML = `
                         <div class="success-message">
                             <h2>Happy Eid ya ${user.name}</h2>
@@ -199,9 +314,18 @@
                         </div>
                     `;
 
-                    // Hide the search section after successful search
-                    const searchSection = document.getElementById('search-section');
-                    searchSection.style.display = 'none';
+                    // Create a direct link for sharing or bookmarking if in incognito
+                    if (incognitoMode || !saved) {
+                        createShareLink(userId);
+                    }
+
+                    // Hide the search section
+                    document.getElementById('search-section').style.display = 'none';
+
+                    // Update URL without reloading page
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('id', userId);
+                    window.history.replaceState({}, '', url);
                 } else {
                     resultDiv.innerHTML = `
                         <div class="error-message">
@@ -218,7 +342,23 @@
             }
         }
 
-        // Function to copy share link
+        // Create a share/bookmark link
+        function createShareLink(userId) {
+            const resultDiv = document.getElementById('result');
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('id', userId);
+
+            const shareDiv = document.createElement('div');
+            shareDiv.className = 'share-link';
+            shareDiv.innerHTML = `
+                <p>${incognitoMode ? 'You\'re in incognito mode.' : 'For safekeeping:'} Bookmark this page or save this link to access your message later:</p>
+                <input type="text" value="${currentUrl.href}" readonly class="share-input">
+                <button onclick="copyShareLink()" class="copy-button">Copy Link</button>
+            `;
+            resultDiv.appendChild(shareDiv);
+        }
+
+        // Copy the share link to clipboard
         function copyShareLink() {
             const shareInput = document.querySelector('.share-input');
             shareInput.select();
@@ -232,6 +372,33 @@
             }, 2000);
         }
 
+        // Accept cookies
+        function acceptCookies() {
+            cookiesAccepted = true;
+            const expiryDate = new Date();
+            expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+            document.cookie = `cookieChoice=accepted; expires=${expiryDate.toUTCString()}; path=/; SameSite=Strict`;
+
+            // If we already have a userId in localStorage, also save it as a cookie
+            const userId = localStorage.getItem('eidMessageId');
+            if (userId) {
+                const expiryDate = new Date();
+                expiryDate.setMonth(expiryDate.getMonth() + 1);
+                document.cookie = `eidMessageId=${userId}; expires=${expiryDate.toUTCString()}; path=/; SameSite=Strict`;
+            }
+
+            document.getElementById('cookieBanner').style.display = 'none';
+        }
+
+        // Decline cookies
+        function declineCookies() {
+            cookiesAccepted = false;
+            const expiryDate = new Date();
+            expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+            document.cookie = `cookieChoice=declined; expires=${expiryDate.toUTCString()}; path=/; SameSite=Strict`;
+            document.getElementById('cookieBanner').style.display = 'none';
+        }
+
         // Add enter key support
         document.getElementById('userId').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
@@ -239,8 +406,10 @@
             }
         });
 
-        // Make copy function globally available
+        // Make functions globally available
         window.copyShareLink = copyShareLink;
+        window.acceptCookies = acceptCookies;
+        window.declineCookies = declineCookies;
 
         // Run on page load
         window.addEventListener('DOMContentLoaded', checkPreviousSearch);
