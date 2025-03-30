@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EID MUBARAK</title>
+    <title>User Message Lookup</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -18,7 +18,7 @@
 <body>
     <div class="container">
         <h1>عيد سعيد</h1>
-        <div class="search-section">
+        <div id="search-section" class="search-section">
             <input type="text" id="userId" placeholder="Enter User ID" class="input-field">
             <button onclick="fetchUserData()" class="search-button">Enter</button>
         </div>
@@ -30,8 +30,20 @@
         </footer>
     </div>
     <script>
-        async function fetchUserData() {
-            const userId = document.getElementById('userId').value;
+        // Check if user already retrieved their message
+        function checkPreviousSearch() {
+            const previousId = localStorage.getItem('eidMessageId');
+            if (previousId) {
+                // User has already retrieved a message
+                const searchSection = document.getElementById('search-section');
+                searchSection.style.display = 'none';
+
+                fetchStoredUserData(previousId);
+            }
+        }
+
+        // Fetch data for a previously stored ID
+        async function fetchStoredUserData(userId) {
             const resultDiv = document.getElementById('result');
 
             try {
@@ -50,6 +62,77 @@
                             <p>${user.message}</p>
                         </div>
                     `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error-message">
+                            <p>Something went wrong. Please clear your browser data and try again.</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error-message">
+                        <p>Error loading data. Please try again later.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // New user search
+        async function fetchUserData() {
+            const userId = document.getElementById('userId').value.trim();
+            const resultDiv = document.getElementById('result');
+
+            // Check if user already has a stored ID
+            const previousId = localStorage.getItem('eidMessageId');
+            if (previousId) {
+                if (previousId === userId) {
+                    // User is searching for their own ID again
+                    fetchStoredUserData(previousId);
+                } else {
+                    // User is trying to search for a different ID
+                    resultDiv.innerHTML = `
+                        <div class="error-message">
+                            <p>You have already viewed your message. Each user can only view their own message once.</p>
+                        </div>
+                    `;
+                }
+                return;
+            }
+
+            // No previous search, proceed with new search
+            if (!userId) {
+                resultDiv.innerHTML = `
+                    <div class="error-message">
+                        <p>Please enter a User ID</p>
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                const response = await fetch('data.json');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+
+                const data = await response.json();
+                const user = data.find(user => user.id === userId);
+
+                if (user) {
+                    // Store the ID in local storage
+                    localStorage.setItem('eidMessageId', userId);
+
+                    resultDiv.innerHTML = `
+                        <div class="success-message">
+                            <h2>Happy Eid ya ${user.name}</h2>
+                            <p>${user.message}</p>
+                        </div>
+                    `;
+
+                    // Hide the search section after successful search
+                    const searchSection = document.getElementById('search-section');
+                    searchSection.style.display = 'none';
                 } else {
                     resultDiv.innerHTML = `
                         <div class="error-message">
@@ -72,6 +155,9 @@
                 fetchUserData();
             }
         });
+
+        // Run on page load
+        window.addEventListener('DOMContentLoaded', checkPreviousSearch);
     </script>
 </body>
 
