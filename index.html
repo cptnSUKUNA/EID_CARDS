@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Message Lookup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@200..1000&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>عيد سعيد</h1>
+        <div class="search-section">
+            <input type="text" id="userId" placeholder="Enter User ID" class="input-field">
+            <button onclick="fetchUserData()" class="search-button">Enter</button>
+        </div>
+        <div id="result" class="result-section">
+            <!-- Results will be displayed here -->
+        </div>
+        <footer class="footer">
+            <p>Made with <span class="heart">❤</span> by <span class="gboy">GBOY</span></p>
+        </footer>
+    </div>
+    <script>
+        async function fetchUserData() {
+            const userId = document.getElementById('userId').value;
+            const resultDiv = document.getElementById('result');
+
+            try {
+                const response = await fetch('data.json');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+
+                const data = await response.json();
+                const user = data.find(user => user.id === userId);
+
+                if (user) {
+                    resultDiv.innerHTML = `
+                        <div class="success-message">
+                            <h2>Happy Eid ya ${user.name}</h2>
+                            <p>${user.message}</p>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error-message">
+                            <p>User not found</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error-message">
+                        <p>Error loading data. Please try again later.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Add enter key support
+        document.getElementById('userId').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                fetchUserData();
+            }
+        });
+    </script>
+</body>
+
+</html>
