@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eid Mubarak</title>
+    <title>User Message Lookup</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -30,15 +30,49 @@
         </footer>
     </div>
     <script>
+        // Function to check if we're in incognito mode (best-effort detection)
+        async function isIncognito() {
+            try {
+                // Try to use local storage as a test
+                localStorage.setItem('test', 'test');
+                localStorage.removeItem('test');
+
+                // If that worked, check IndexedDB (often disabled in incognito)
+                const db = indexedDB.open('test');
+                await new Promise((resolve, reject) => {
+                    db.onerror = () => resolve(true); // Likely incognito
+                    db.onsuccess = () => resolve(false); // Likely normal mode
+                });
+
+                return false; // If we get here, probably not incognito
+            } catch (e) {
+                return true; // Storage exception - likely incognito
+            }
+        }
+
+        // Track already viewed IDs in memory for the current session
+        const viewedIds = new Set();
+
         // Check if user already retrieved their message
-        function checkPreviousSearch() {
+        async function checkPreviousSearch() {
+            // First try local storage
             const previousId = localStorage.getItem('eidMessageId');
             if (previousId) {
                 // User has already retrieved a message
+                viewedIds.add(previousId);
                 const searchSection = document.getElementById('search-section');
                 searchSection.style.display = 'none';
 
                 fetchStoredUserData(previousId);
+                return;
+            }
+
+            // If no local storage, check for URL parameter (fallback for incognito)
+            const urlParams = new URLSearchParams(window.location.search);
+            const idParam = urlParams.get('id');
+            if (idParam) {
+                document.getElementById('userId').value = idParam;
+                fetchUserData(true); // true means it's from URL param
             }
         }
 
@@ -79,13 +113,34 @@
         }
 
         // New user search
-        async function fetchUserData() {
+        async function fetchUserData(fromUrlParam = false) {
             const userId = document.getElementById('userId').value.trim();
             const resultDiv = document.getElementById('result');
 
-            // Check if user already has a stored ID
+            // Check if empty
+            if (!userId) {
+                resultDiv.innerHTML = `
+                    <div class="error-message">
+                        <p>Please enter a User ID</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Check if this ID has already been viewed in this session
+            if (viewedIds.has(userId) && !fromUrlParam) {
+                // User is searching for an ID that's already been viewed
+                resultDiv.innerHTML = `
+                    <div class="error-message">
+                        <p>This ID has already been viewed. Each user can only view their own message once.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Check local storage for any previously viewed ID
             const previousId = localStorage.getItem('eidMessageId');
-            if (previousId) {
+            if (previousId && !fromUrlParam) {
                 if (previousId === userId) {
                     // User is searching for their own ID again
                     fetchStoredUserData(previousId);
@@ -100,16 +155,6 @@
                 return;
             }
 
-            // No previous search, proceed with new search
-            if (!userId) {
-                resultDiv.innerHTML = `
-                    <div class="error-message">
-                        <p>Please enter a User ID</p>
-                    </div>
-                `;
-                return;
-            }
-
             try {
                 const response = await fetch('data.json');
                 if (!response.ok) {
@@ -120,8 +165,32 @@
                 const user = data.find(user => user.id === userId);
 
                 if (user) {
-                    // Store the ID in local storage
-                    localStorage.setItem('eidMessageId', userId);
+                    // Add to memory for current session
+                    viewedIds.add(userId);
+
+                    // Try to store in local storage (may fail in incognito)
+                    try {
+                        localStorage.setItem('eidMessageId', userId);
+                    } catch (e) {
+                        console.log('Could not save to localStorage, likely in incognito mode');
+                        // Create a shareable link with the ID in the URL
+                        const currentUrl = new URL(window.location.href);
+                        currentUrl.searchParams.set('id', userId);
+
+                        // Add a share option if in incognito
+                        if (await isIncognito()) {
+                            setTimeout(() => {
+                                const shareDiv = document.createElement('div');
+                                shareDiv.className = 'share-link';
+                                shareDiv.innerHTML = `
+                                    <p>It seems you're using incognito mode. Save this link to access your message later:</p>
+                                    <input type="text" value="${currentUrl.href}" readonly class="share-input">
+                                    <button onclick="copyShareLink()" class="copy-button">Copy Link</button>
+                                `;
+                                resultDiv.appendChild(shareDiv);
+                            }, 1000);
+                        }
+                    }
 
                     resultDiv.innerHTML = `
                         <div class="success-message">
@@ -149,12 +218,29 @@
             }
         }
 
+        // Function to copy share link
+        function copyShareLink() {
+            const shareInput = document.querySelector('.share-input');
+            shareInput.select();
+            document.execCommand('copy');
+
+            const copyButton = document.querySelector('.copy-button');
+            const originalText = copyButton.innerText;
+            copyButton.innerText = 'Copied!';
+            setTimeout(() => {
+                copyButton.innerText = originalText;
+            }, 2000);
+        }
+
         // Add enter key support
         document.getElementById('userId').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 fetchUserData();
             }
         });
+
+        // Make copy function globally available
+        window.copyShareLink = copyShareLink;
 
         // Run on page load
         window.addEventListener('DOMContentLoaded', checkPreviousSearch);
